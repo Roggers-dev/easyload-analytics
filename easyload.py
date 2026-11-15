@@ -388,8 +388,7 @@ if nav_choice == "📈 Regression, Trends & Performers":
                             <i>Real-Life Judgment:</i> Audit these entities immediately for operational friction or risk.
                         </div>
                     """, unsafe_allow_html=True)
-
-                r_sq = model.score(X, y)
+                    r_sq = model.score(X, y)
                 slope = model.coef_[0]
                 direction = "increases" if slope > 0 else "decreases"
                 
