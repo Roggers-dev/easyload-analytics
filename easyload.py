@@ -62,6 +62,14 @@ st.markdown("""
         margin-top: 20px;
         color: #e2e8f0;
     }
+    .filter-explanation-box {
+        background-color: #0f172a;
+        border: 1px solid #38bdf8;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        color: #e2e8f0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -86,7 +94,6 @@ def init_db():
         )
     ''')
     
-    # Auto-migration for legacy databases
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN requested_at TEXT")
         conn.commit()
@@ -103,7 +110,6 @@ def init_db():
     ''')
     conn.commit()
     
-    # Seed default Master Admin if empty
     cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cursor.fetchone():
         secure_pass = hash_password("Admin2026!")
@@ -201,8 +207,8 @@ if not st.session_state["authenticated"]:
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown(f"<p style='text-align: center; color: #64748b; font-size: 12px;'>Secured & Engineered by <b>Rogers</b> | Contact: 0542470810</p>", unsafe_allow_html=True)
     st.stop()
-
-# ==========================================
+    
+    # ==========================================
 # 5. SIDEBAR & NAVIGATION SETUP
 # ==========================================
 st.sidebar.markdown(f"### 👤 Logged in as: `{st.session_state['username']}`")
@@ -278,7 +284,6 @@ if uploaded_file is not None:
         st.error(f"Error reading file: {e}")
 
 if 'df' not in st.session_state:
-    # Default initial fallback demo data
     np.random.seed(42)
     n = 100
     st.session_state['df'] = pd.DataFrame({
@@ -309,7 +314,6 @@ if nav_choice == "📈 Regression, Trends & Performers":
         with sel3:
             label_col = st.selectbox("3️⃣ Name / ID Column:", all_cols, index=0)
 
-        # Prevent crash if user picks the exact same column for X and Y
         if col_x == col_y:
             st.warning("⚠️ Please select **two different columns** for the Driver (X-axis) and Outcome (Y-axis) to run regression modeling.")
         else:
@@ -388,7 +392,8 @@ if nav_choice == "📈 Regression, Trends & Performers":
                             <i>Real-Life Judgment:</i> Audit these entities immediately for operational friction or risk.
                         </div>
                     """, unsafe_allow_html=True)
-                    r_sq = model.score(X, y)
+
+                r_sq = model.score(X, y)
                 slope = model.coef_[0]
                 direction = "increases" if slope > 0 else "decreases"
                 
@@ -405,15 +410,80 @@ if nav_choice == "📈 Regression, Trends & Performers":
         st.warning("⚠️ Please upload a dataset with at least **two numeric columns** to run regression models.")
 
 elif nav_choice == "📊 Global & Selected Metrics":
-    st.markdown("## 📊 Global & Selected Metrics Overview")
-    st.dataframe(df, use_container_width=True)
+    st.markdown("## 📊 Global & Filtered Metrics Overview")
+    st.markdown("Inspect global statistics, filter specific column segments, and review individual column metric cards.")
+    
+    # --- INTERACTIVE FILTER SECTION ---
+    st.markdown("### 🔍 Filter Controls")
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    
+    filtered_df = df.copy()
+    
+    if cat_cols:
+        filter_expander = st.expander("🛠️ Filter Data by Categories", expanded=True)
+        with filter_expander:
+            selected_filters = {}
+            f_cols = st.columns(min(len(cat_cols), 3))
+            for i, c_col in enumerate(cat_cols[:3]):
+                with f_cols[i]:
+                    unique_vals = df[c_col].dropna().unique().tolist()
+                    chosen_vals = st.multiselect(f"Filter {c_col}:", unique_vals, default=[])
+                    if chosen_vals:
+                        selected_filters[c_col] = chosen_vals
+            
+            # Apply filters
+            if selected_filters:
+                for col_name, vals in selected_filters.items():
+                    filtered_df = filtered_df[filtered_df[col_name].isin(vals)]
+
+    # --- FILTER EXPLANATION CONTAINER ---
+    global_count = len(df)
+    filtered_count = len(filtered_df)
+    
+    st.markdown(f"""
+        <div class='filter-explanation-box'>
+            <b>📌 Data Scope & Filter Explanation:</b><br>
+            • <b>Global Dataset Size:</b> <b>{global_count:,}</b> total records.<br>
+            • <b>Current Filtered Scope:</b> Showing <b>{filtered_count:,}</b> records ({filtered_count/global_count*100:.1f}% of total data).<br>
+            <i>Interpretation:</i> All computed sums, averages, medians, and means below dynamically reflect this filtered subset.
+        </div>
+    """, unsafe_allow_html=True)
+
+    # --- INDIVIDUAL COLUMN INFORMATION PLACEHOLDERS (CARDS) ---
+    st.markdown("### 📌 Individual Column Statistics & Computed Placeholders")
+    
+    if numeric_cols:
+        for num_c in numeric_cols:
+            st.markdown(f"#### 📊 Column: `{num_c}`")
+            col_full_series = df[num_c].dropna()
+            col_filt_series = filtered_df[num_c].dropna()
+            
+            m1, m2, m3, m4, m5, m6 = st.columns(6)
+            with m1:
+                st.metric("Total Sum", f"{col_filt_series.sum():,.1f}", delta=f"Global: {col_full_series.sum():,.1f}")
+            with m2:
+                st.metric("Mean (Avg)", f"{col_filt_series.mean():,.2f}", delta=f"Global: {col_full_series.mean():,.2f}")
+            with m3:
+                st.metric("Median", f"{col_filt_series.median():,.2f}", delta=f"Global: {col_full_series.median():,.2f}")
+            with m4:
+                st.metric("Count", f"{len(col_filt_series):,} rows", delta=f"{len(col_filt_series)/len(col_full_series)*100:.0f}% of total")
+            with m5:
+                st.metric("Std Deviation", f"{col_filt_series.std():,.2f}")
+            with m6:
+                st.metric("Min / Max", f"{col_filt_series.min():,.1f} / {col_filt_series.max():,.1f}")
+            st.markdown("---")
+    else:
+        st.warning("No numeric columns available for statistical cards.")
+
+    st.markdown("### 📋 Filtered Data Table View")
+    st.dataframe(filtered_df, use_container_width=True)
 
 elif nav_choice == "🔀 Pivot Summaries & Counts":
     st.markdown("## 🔀 Pivot Summaries & Aggregations")
     if len(numeric_cols) > 0 and len(all_cols) > 1:
         cat_col = st.selectbox("Select Category Column:", [c for c in all_cols if c not in numeric_cols] or all_cols)
         num_col = st.selectbox("Select Metric to Aggregate:", numeric_cols)
-        summary_df = df.groupby(cat_col)[num_col].agg(['count', 'mean', 'sum']).reset_index()
+        summary_df = df.groupby(cat_col)[num_col].agg(['count', 'mean', 'median', 'sum', 'std']).reset_index()
         st.dataframe(summary_df, use_container_width=True)
     else:
         st.warning("Insufficient categorical or numeric columns for aggregation.")
